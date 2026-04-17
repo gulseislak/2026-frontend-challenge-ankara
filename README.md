@@ -3,13 +3,13 @@
 ## User Information
 Please fill in your information after forking this repository:
 
-- **Name**: [Your Name]
+- **Name**: Gülse Işlak
 
 ## Project Description
-[Add a brief description of your project here]
+Missing Podo investigaation dashboard
 
 ## Getting Started
-[Add instructions for setting up and running the project]
+EKLEME YAP
 
 # 🚀 Challenge Duyurusu
 
