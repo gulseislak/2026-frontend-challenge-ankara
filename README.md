@@ -9,7 +9,31 @@ Please fill in your information after forking this repository:
 Missing Podo investigaation dashboard
 
 ## Getting Started
-EKLEME YAP
+
+### Prerequisites
+- Node.js 18+
+
+### Installation
+
+1. Clone the repository:
+```bash
+   git clone https://github.com/your-username/missing-podo-ankara.git
+   cd missing-podo-ankara
+```
+
+2. Install dependencies:
+```bash
+   npm install
+```
+
+3. Start the development server:
+```bash
+   npm run dev
+```
+
+4. Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+> **Note:** The Vite dev server proxies `/jotform` requests to `api.jotform.com` to avoid CORS issues. No `.env` setup required — API keys are already configured in the source.
 
 # 🚀 Challenge Duyurusu
 

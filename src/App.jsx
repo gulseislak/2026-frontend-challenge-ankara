@@ -9,14 +9,12 @@ const FORM_IDS = {
   anonymousTips: "261065875889981",
 };
 
-// ── Data Fetching ─────────────────────────────────────────────────────────────
 async function fetchForm(formId) {
   const res = await fetch(`/jotform/form/${formId}/submissions?apiKey=${API_KEY}&limit=100`);
   const json = await res.json();
   return json.content || [];
 }
 
-// Flatten answer value — handles nested {first, last}, arrays, objects
 function flattenAnswer(answer) {
   if (!answer) return "";
   if (typeof answer === "string") return answer.trim();
@@ -56,7 +54,6 @@ function parseAnswers(submission) {
   return result;
 }
 
-// ── Smart Field Extractors ────────────────────────────────────────────────────
 function str(item) {
   const clean = Object.fromEntries(Object.entries(item).filter(([k]) => !k.startsWith("_raw")));
   return JSON.stringify(clean).toLowerCase();
@@ -90,13 +87,26 @@ function locationOf(item) {
   ) || "?";
 }
 
+// FIX 1: Expanded contentOf to catch more field names for messages
 function contentOf(item) {
   return val(item,
     "content","message","note","description","details","tip",
     "mesaj","icerik","not","aciklama","detay","ipucu","bilgi",
-    "what_happened","notes","comment","info",
-    "_field_6","_field_7"
+    "what_happened","notes","comment","info","text","body","subject",
+    "message_content","msg","konu","metin","yorum","feedback",
+    "message_body","mesaj_icerigi","mesaj_metni",
+    "_field_6","_field_7","_field_8","_field_9"
   ) || "";
+}
+
+// FIX 2: tipPersonOf — dedicated extractor for anonymous tip reporters
+function tipPersonOf(item) {
+  return val(item,
+    "name","person","full_name","fullname","reporter","author",
+    "submitted_by","sender","from","gonderen","ad","isim",
+    "ad_soyad","adsoyad","kisi","ihbarcı","ihbarci","bildiren",
+    "_field_1","_field_2","_field_3"
+  ) || "Anonim";
 }
 
 function timeOf(item) {
@@ -144,11 +154,18 @@ function coordsOf(item) {
   return null;
 }
 
+// FIX 3: Filter out Podo from suspects list
+function isPodo(name) {
+  if (!name) return false;
+  const n = name.toLowerCase().trim();
+  return n === "podo" || n.startsWith("podo ") || n.endsWith(" podo");
+}
+
 function getPeople(data) {
   const set = new Set();
   [...data.checkins, ...data.messages, ...data.sightings, ...data.personalNotes].forEach(item => {
     const n = personOf(item);
-    if (n && n !== "—" && n !== "?") set.add(n);
+    if (n && n !== "—" && n !== "?" && !isPodo(n)) set.add(n);
   });
   return [...set];
 }
@@ -163,7 +180,18 @@ function suspicionScore(name, data) {
   return Math.min(s, 100);
 }
 
-// ── Global Styles ─────────────────────────────────────────────────────────────
+// FIX 4: Search filter — matches by person name, location, or content
+function matchesSearch(item, search) {
+  if (!search || !search.trim()) return true;
+  const q = search.trim().toLowerCase();
+  return (
+    str(item).includes(q) ||
+    personOf(item).toLowerCase().includes(q) ||
+    locationOf(item).toLowerCase().includes(q) ||
+    contentOf(item).toLowerCase().includes(q)
+  );
+}
+
 const globalStyle = `
   @import url('https://fonts.googleapis.com/css2?family=Rye&family=Special+Elite&family=Oswald:wght@400;600;700&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -225,7 +253,7 @@ const globalStyle = `
   .search-input {
     background: rgba(20,10,0,0.8); border: 2px solid #6a3a00; border-bottom-color: #d4820a;
     color: #f5e8c0; font-family: 'Special Elite', cursive;
-    font-size: 13px; padding: 6px 12px; outline: none; width: 160px; letter-spacing: 1px;
+    font-size: 13px; padding: 6px 12px; outline: none; width: 200px; letter-spacing: 1px;
     clip-path: polygon(3px 0%, calc(100% - 3px) 0%, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 0% calc(100% - 3px), 0% 3px);
   }
   .search-input::placeholder { color: #7a5a30; }
@@ -258,7 +286,6 @@ const C = {
   green:"#1a4a00", greenLight:"#3a8a00", cream:"#f5e8c0",
 };
 
-// ── UI Components ─────────────────────────────────────────────────────────────
 function Nail({ style }) { return <div className="nail" style={style} />; }
 
 function WantedBanner({ children }) {
@@ -340,7 +367,6 @@ function Divider() {
   );
 }
 
-// Shows all detected fields — helps identify correct field names from real data
 function FieldDebug({ item }) {
   const fields = Object.entries(item).filter(([k,v]) => !k.startsWith("_") && v && String(v).trim());
   if (!fields.length) return null;
@@ -358,7 +384,6 @@ function FieldDebug({ item }) {
   );
 }
 
-// ── Map Component ─────────────────────────────────────────────────────────────
 function InvestigationMap({ sightings, checkins, highlightedId, onSelectItem }) {
   const mapRef = useRef(null);
   const leafletMap = useRef(null);
@@ -432,7 +457,6 @@ function InvestigationMap({ sightings, checkins, highlightedId, onSelectItem }) 
     document.head.appendChild(script);
   }, []);
 
-  // Update markers when selection changes
   useEffect(() => {
     if (!window.L) return;
     Object.entries(markersRef.current).forEach(([id, { marker, item }]) => {
@@ -456,7 +480,6 @@ function InvestigationMap({ sightings, checkins, highlightedId, onSelectItem }) 
         <WantedBanner>🗺 PODO'NUN İZİ — ANKARA HARİTASI</WantedBanner>
       </div>
       <div ref={mapRef} style={{width:"100%",height:420,border:`2px solid ${C.gold}`}} />
-      {/* Legend */}
       <div style={{position:"absolute",bottom:16,right:16,zIndex:500,background:"rgba(26,15,0,0.9)",padding:"8px 12px",border:`1px solid ${C.gold}`,display:"flex",flexDirection:"column",gap:6}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <div style={{width:10,height:10,borderRadius:"50%",background:C.red}} />
@@ -474,7 +497,6 @@ function InvestigationMap({ sightings, checkins, highlightedId, onSelectItem }) 
   );
 }
 
-// ── Map + List Tab ────────────────────────────────────────────────────────────
 function MapAndList({ data, search }) {
   const [highlightedId, setHighlightedId] = useState(null);
   const listRefs = useRef({});
@@ -482,7 +504,7 @@ function MapAndList({ data, search }) {
   const allItems = [
     ...data.sightings.map(s => ({...s, _type:"sighting"})),
     ...data.checkins.map(c  => ({...c, _type:"checkin"})),
-  ].filter(item => !search || str(item).includes(search.toLowerCase()));
+  ].filter(item => matchesSearch(item, search));
 
   const handleMapSelect = useCallback((id) => {
     setHighlightedId(id);
@@ -506,13 +528,11 @@ function MapAndList({ data, search }) {
           onSelectItem={handleMapSelect}
         />
       </PaperCard>
-
       <div style={{textAlign:"center"}}>
         <span style={{fontFamily:"'Special Elite',cursive",color:C.inkFaint,fontSize:12,letterSpacing:2}}>
           ↕ Haritadaki bir işarete tıklayın — liste otomatik kaydırılır
         </span>
       </div>
-
       <PaperCard>
         <SecTitle icon="📋">Tüm Konumlar ({allItems.length})</SecTitle>
         {allItems.length === 0 && <Empty />}
@@ -559,7 +579,6 @@ function MapAndList({ data, search }) {
   );
 }
 
-// ── Overview ──────────────────────────────────────────────────────────────────
 function Overview({ data, selectedPerson, onSelectPerson }) {
   const people = getPeople(data);
   const scores = people.map(p => ({name:p, score:suspicionScore(p, data)})).sort((a,b) => b.score-a.score).slice(0,8);
@@ -655,7 +674,7 @@ function Overview({ data, selectedPerson, onSelectPerson }) {
 }
 
 function Checkins({ data, search }) {
-  const items = data.checkins.filter(c => str(c).includes(search.toLowerCase()));
+  const items = data.checkins.filter(c => matchesSearch(c, search));
   if (!items.length) return <Empty />;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"1rem"}} className="fade-in">
@@ -680,7 +699,7 @@ function Checkins({ data, search }) {
 }
 
 function Sightings({ data, search }) {
-  const items = data.sightings.filter(s => str(s).includes(search.toLowerCase()));
+  const items = data.sightings.filter(s => matchesSearch(s, search));
   if (!items.length) return <Empty />;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"1rem"}} className="fade-in">
@@ -702,13 +721,24 @@ function Sightings({ data, search }) {
   );
 }
 
+// FIX 1: Messages — show all non-empty fields as fallback if contentOf returns empty
 function Messages({ data, search }) {
-  const items = data.messages.filter(m => str(m).includes(search.toLowerCase()));
+  const items = data.messages.filter(m => matchesSearch(m, search));
   if (!items.length) return <Empty />;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"1rem"}} className="fade-in">
       {items.map((m,i) => {
         const to = val(m,"to","alici","kime","recipient","receiver","kime_gonderildi");
+        const msgContent = contentOf(m);
+
+        // Fallback: collect all non-empty non-system fields to display if contentOf is empty
+        const fallbackFields = !msgContent
+          ? Object.entries(m).filter(([k,v]) =>
+              !k.startsWith("_") && v && String(v).trim() &&
+              !["name","person","full_name","isim","ad","ad_soyad","to","alici","kime"].includes(k)
+            ).map(([k,v]) => `${k}: ${String(v).slice(0,120)}`).join(" | ")
+          : "";
+
         return (
           <PaperCard key={i} corner={`#${String(i+1).padStart(3,"0")}`}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:8}}>
@@ -719,7 +749,11 @@ function Messages({ data, search }) {
               <span style={{fontFamily:"'Oswald',sans-serif",color:C.inkFaint,fontSize:11,letterSpacing:1}}>{timeOf(m)}</span>
             </div>
             <Divider />
-            {contentOf(m)&&<p style={{fontFamily:"'Special Elite',cursive",color:C.inkLight,fontSize:14,marginTop:10,lineHeight:1.7,fontStyle:"italic",paddingLeft:12,borderLeft:`3px solid ${C.gold}`}}>"{contentOf(m)}"</p>}
+            {(msgContent || fallbackFields) && (
+              <p style={{fontFamily:"'Special Elite',cursive",color:C.inkLight,fontSize:14,marginTop:10,lineHeight:1.7,fontStyle:"italic",paddingLeft:12,borderLeft:`3px solid ${C.gold}`}}>
+                "{msgContent || fallbackFields}"
+              </p>
+            )}
             <FieldDebug item={m} />
           </PaperCard>
         );
@@ -728,11 +762,12 @@ function Messages({ data, search }) {
   );
 }
 
-function Notes({ data }) {
-  if (!data.personalNotes.length) return <Empty />;
+function Notes({ data, search }) {
+  const items = data.personalNotes.filter(n => matchesSearch(n, search));
+  if (!items.length) return <Empty />;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"1rem"}} className="fade-in">
-      {data.personalNotes.map((n,i) => (
+      {items.map((n,i) => (
         <PaperCard key={i} corner={`NOT-${String(i+1).padStart(2,"0")}`}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
             <span style={{fontFamily:"'Rye',serif",color:C.gold,fontSize:15}}>{personOf(n)}</span>
@@ -747,19 +782,24 @@ function Notes({ data }) {
   );
 }
 
-function Tips({ data }) {
-  if (!data.anonymousTips.length) return <Empty />;
+// FIX 2: Tips — show reporter/person info
+function Tips({ data, search }) {
+  const items = data.anonymousTips.filter(t => matchesSearch(t, search));
+  if (!items.length) return <Empty />;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"1rem"}} className="fade-in">
-      {data.anonymousTips.map((t,i) => {
+      {items.map((t,i) => {
         const rel = val(t,"reliability","guvenilirlik","guveni","credibility");
         const isHigh = rel.toLowerCase().includes("yük")||rel.toLowerCase().includes("high");
         const isMed  = rel.toLowerCase().includes("ort")||rel.toLowerCase().includes("med");
+        const reporter = tipPersonOf(t);
         return (
           <PaperCard key={i} corner={`İPUCU-${String(i+1).padStart(2,"0")}`} style={{borderStyle:"dashed",borderColor:C.red,borderWidth:2}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:8}}>
-              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontSize:18}}>⚠️</span>
+                {/* Reporter name badge */}
+                <Badge text={`İhbarcı: ${reporter}`} variant="dark" />
                 {rel&&<Badge text={`Güvenilirlik: ${rel}`} variant={isHigh?"green":isMed?"default":"red"} />}
               </div>
               <span style={{fontFamily:"'Oswald',sans-serif",color:C.inkFaint,fontSize:11,letterSpacing:1}}>{timeOf(t)} {dateOf(t)}</span>
@@ -802,7 +842,6 @@ function RawData({ data }) {
   );
 }
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
 const TABS = [
   {id:"Özet",     label:"📋 ÖZET"},
   {id:"Harita",   label:"🗺 HARİTA"},
@@ -811,10 +850,8 @@ const TABS = [
   {id:"Mesajlar", label:"✉ MESAJLAR"},
   {id:"Notlar",   label:"🗒 NOTLAR"},
   {id:"İpuçları", label:"⚠ İPUÇLARI"},
-  {id:"Ham Veri", label:"⚙ HAM VERİ"},
 ];
 
-// ── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab,setTab]           = useState("Özet");
   const [search,setSearch]     = useState("");
@@ -912,8 +949,20 @@ export default function App() {
               {t.label}
             </button>
           ))}
-          <div style={{marginLeft:"auto",paddingLeft:"1rem"}}>
-            <input placeholder="[ ARA... ]" value={search} onChange={e=>setSearch(e.target.value)} className="search-input" />
+          <div style={{marginLeft:"auto",paddingLeft:"1rem",display:"flex",alignItems:"center",gap:8}}>
+            <input
+              placeholder="[ KİŞİ / YER / İÇERİK ARA... ]"
+              value={search}
+              onChange={e=>setSearch(e.target.value)}
+              className="search-input"
+            />
+            {search && (
+              <button
+                className="wanted-btn"
+                onClick={()=>setSearch("")}
+                style={{padding:"6px 10px",fontSize:10}}
+              >✕</button>
+            )}
           </div>
         </div>
       </div>
@@ -924,9 +973,9 @@ export default function App() {
         {tab==="Checkin"  && <Checkins   data={data} search={search} />}
         {tab==="Görülme"  && <Sightings  data={data} search={search} />}
         {tab==="Mesajlar" && <Messages   data={data} search={search} />}
-        {tab==="Notlar"   && <Notes      data={data} />}
-        {tab==="İpuçları" && <Tips       data={data} />}
-        {tab==="Ham Veri" && <RawData    data={data} />}
+        {tab==="Notlar"   && <Notes      data={data} search={search} />}
+        {tab==="İpuçları" && <Tips       data={data} search={search} />}
+
       </div>
 
       <div className="warning-stripe" />
