@@ -33,7 +33,7 @@ Missing Podo investigaation dashboard
 
 4. Open [http://localhost:5173](http://localhost:5173) in your browser.
 
-> **Note:** The Vite dev server proxies `/jotform` requests to `api.jotform.com` to avoid CORS issues. No `.env` setup required — API keys are already configured in the source.
+
 
 # 🚀 Challenge Duyurusu
 
